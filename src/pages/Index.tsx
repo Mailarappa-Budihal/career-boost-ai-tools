@@ -1,5 +1,6 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,11 +18,17 @@ import {
   CheckCircle
 } from 'lucide-react';
 import Header from '@/components/Header';
-import PortfolioGenerator from '@/components/tools/PortfolioGenerator';
-import ResumeAnalyzer from '@/components/tools/ResumeAnalyzer';
+import AuthPage from '@/components/auth/AuthPage';
+import EnhancedPortfolioGenerator from '@/components/tools/EnhancedPortfolioGenerator';
+import EnhancedResumeAnalyzer from '@/components/tools/EnhancedResumeAnalyzer';
+import CoverLetterGenerator from '@/components/tools/CoverLetterGenerator';
+import ResumeEnhancer from '@/components/tools/ResumeEnhancer';
+import MockInterview from '@/components/tools/MockInterview';
 
 const Index = () => {
+  const { user, loading } = useAuth();
   const [activeToolIndex, setActiveToolIndex] = useState<number | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
 
   const tools = [
     {
@@ -32,7 +39,7 @@ const Index = () => {
       color: 'bg-blue-500',
       features: ['Static HTML/CSS files', 'Responsive design', 'Downloadable package'],
       status: 'Available',
-      component: PortfolioGenerator
+      component: EnhancedPortfolioGenerator
     },
     {
       id: 'cover-letter',
@@ -41,7 +48,8 @@ const Index = () => {
       icon: FileText,
       color: 'bg-purple-500',
       features: ['Job-specific tailoring', 'Multiple formats', 'Download options'],
-      status: 'Coming Soon'
+      status: 'Available',
+      component: CoverLetterGenerator
     },
     {
       id: 'resume-analyzer',
@@ -51,7 +59,7 @@ const Index = () => {
       color: 'bg-green-500',
       features: ['ATS score analysis', 'Keyword matching', 'Actionable feedback'],
       status: 'Available',
-      component: ResumeAnalyzer
+      component: EnhancedResumeAnalyzer
     },
     {
       id: 'resume-enhancer',
@@ -59,8 +67,9 @@ const Index = () => {
       description: 'Optimize your resume content for specific job applications',
       icon: Zap,
       color: 'bg-orange-500',
-      features: ['Content optimization', 'Keyword enhancement', 'PDF export'],
-      status: 'Coming Soon'
+      features: ['Content optimization', 'Keyword enhancement', 'AI-powered improvements'],
+      status: 'Available',
+      component: ResumeEnhancer
     },
     {
       id: 'job-search',
@@ -78,7 +87,8 @@ const Index = () => {
       icon: MessageSquare,
       color: 'bg-pink-500',
       features: ['Role-specific questions', 'Real-time feedback', 'Performance insights'],
-      status: 'Coming Soon'
+      status: 'Available',
+      component: MockInterview
     }
   ];
 
@@ -108,6 +118,10 @@ const Index = () => {
   const handleToolClick = (index: number) => {
     const tool = tools[index];
     if (tool.status === 'Available') {
+      if (!user) {
+        setShowAuth(true);
+        return;
+      }
       setActiveToolIndex(index);
     }
   };
@@ -115,6 +129,33 @@ const Index = () => {
   const handleBackToTools = () => {
     setActiveToolIndex(null);
   };
+
+  const handleGetStarted = () => {
+    if (!user) {
+      setShowAuth(true);
+    }
+  };
+
+  useEffect(() => {
+    if (user && showAuth) {
+      setShowAuth(false);
+    }
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-portfolio-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (showAuth) {
+    return <AuthPage />;
+  }
 
   if (activeToolIndex !== null) {
     const ActiveComponent = tools[activeToolIndex].component;
@@ -145,7 +186,11 @@ const Index = () => {
               Generate portfolios, analyze resumes, create cover letters, and practice interviews - all powered by cutting-edge AI
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button size="lg" className="bg-white text-slate-900 hover:bg-slate-100 transition-all duration-300 transform hover:scale-105">
+              <Button 
+                size="lg" 
+                className="bg-white text-slate-900 hover:bg-slate-100 transition-all duration-300 transform hover:scale-105"
+                onClick={handleGetStarted}
+              >
                 Get Started Free
               </Button>
               <Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-slate-900 transition-all duration-300">
@@ -229,7 +274,7 @@ const Index = () => {
                     </ul>
                     {isAvailable && (
                       <Button className="w-full mt-4 bg-gradient-primary hover:opacity-90 transition-opacity">
-                        Launch Tool
+                        {user ? 'Launch Tool' : 'Sign In to Use'}
                       </Button>
                     )}
                   </CardContent>
@@ -249,7 +294,11 @@ const Index = () => {
           <p className="text-xl mb-8 text-blue-100 max-w-2xl mx-auto">
             Join thousands of engineers who have accelerated their careers with PortfolioAI
           </p>
-          <Button size="lg" className="bg-white text-portfolio-primary hover:bg-slate-100 transition-all duration-300 transform hover:scale-105">
+          <Button 
+            size="lg" 
+            className="bg-white text-portfolio-primary hover:bg-slate-100 transition-all duration-300 transform hover:scale-105"
+            onClick={handleGetStarted}
+          >
             Start Building Today
           </Button>
         </div>

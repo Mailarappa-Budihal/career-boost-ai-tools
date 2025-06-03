@@ -1,13 +1,16 @@
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { User, ArrowLeft } from 'lucide-react';
+import { User, ArrowLeft, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface HeaderProps {
   onBack?: () => void;
 }
 
 const Header = ({ onBack }: HeaderProps) => {
+  const { user, signOut } = useAuth();
+
   return (
     <header className="bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
@@ -42,13 +45,27 @@ const Header = ({ onBack }: HeaderProps) => {
           </nav>
 
           <div className="flex items-center space-x-3">
-            <Button variant="ghost" size="sm" className="text-slate-600 hover:text-slate-900">
-              Sign In
-            </Button>
-            <Button size="sm" className="bg-gradient-primary hover:opacity-90">
-              <User className="w-4 h-4 mr-2" />
-              Get Started
-            </Button>
+            {user ? (
+              <>
+                <span className="text-sm text-slate-600 hidden sm:block">
+                  {user.email}
+                </span>
+                <Button variant="ghost" size="sm" onClick={signOut} className="text-slate-600 hover:text-slate-900">
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" className="text-slate-600 hover:text-slate-900">
+                  Sign In
+                </Button>
+                <Button size="sm" className="bg-gradient-primary hover:opacity-90">
+                  <User className="w-4 h-4 mr-2" />
+                  Get Started
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
