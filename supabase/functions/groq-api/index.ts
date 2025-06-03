@@ -15,6 +15,11 @@ serve(async (req) => {
   try {
     const { tool_type, user_input, job_description } = await req.json()
     
+    // Validate input
+    if (!tool_type || !user_input) {
+      throw new Error('Missing required parameters: tool_type and user_input')
+    }
+    
     // Get GROQ API key from environment
     const groqApiKey = Deno.env.get('GROQ_API_KEY')
     if (!groqApiKey) {
@@ -62,27 +67,21 @@ Generate only the HTML code with embedded CSS, no explanations.`,
 
       resume_analyzer: `You are an expert ATS (Applicant Tracking System) specialist and career counselor.
 
-Analyze the following resume against the job description and provide:
-1. An ATS compatibility score (0-100)
-2. Specific areas for improvement
-3. Missing keywords from the job description
-4. Formatting and structure feedback
-5. Actionable recommendations
+Analyze the following resume against the job description and provide detailed feedback.
 
 Resume Content:
 ${user_input}
 
-Job Description:
-${job_description}
+${job_description ? `Job Description:\n${job_description}` : ''}
 
-Provide your analysis in JSON format:
-{
-  "ats_score": number,
-  "missing_keywords": string[],
-  "improvements": string[],
-  "strengths": string[],
-  "recommendations": string[]
-}`,
+Provide your analysis with:
+1. An ATS compatibility score (0-100)
+2. Specific areas for improvement
+3. Missing keywords ${job_description ? 'from the job description' : ''}
+4. Formatting and structure feedback
+5. Actionable recommendations
+
+Format your response as a structured analysis with clear sections.`,
 
       cover_letter: `You are an expert career counselor specializing in cover letter writing.
 
@@ -91,28 +90,26 @@ Write a professional, tailored cover letter based on:
 Resume/Background:
 ${user_input}
 
-Target Job Description:
-${job_description}
+${job_description ? `Target Job Description:\n${job_description}` : ''}
 
 Requirements:
 1. Professional business format
 2. 3-4 paragraphs maximum
 3. Highlight relevant experience from the resume
-4. Address specific requirements from the job description
-5. Show enthusiasm for the role and company
+4. ${job_description ? 'Address specific requirements from the job description' : 'Focus on general professional strengths'}
+5. Show enthusiasm for the role${job_description ? ' and company' : ''}
 6. Include a strong opening and closing
 
 Generate only the cover letter text, no additional formatting or explanations.`,
 
       resume_enhancer: `You are an expert resume writer and career counselor.
 
-Enhance the following resume to better match the target job description:
+Enhance the following resume content:
 
 Current Resume:
 ${user_input}
 
-Target Job Description:
-${job_description}
+${job_description ? `Target Job Description:\n${job_description}` : ''}
 
 Requirements:
 1. Optimize keywords for ATS compatibility
@@ -124,29 +121,20 @@ Requirements:
 
 Provide the enhanced resume content in a clean, professional format.`,
 
-      mock_interview: `You are an expert technical interviewer conducting a mock interview.
+      mock_interview: `You are an expert interviewer conducting a mock interview session.
 
-Based on the job role/description provided, generate 5 relevant interview questions:
+Based on the following information, generate relevant interview questions:
 
-Job Information:
-${job_description || user_input}
+${job_description ? `Job Information:\n${job_description}` : `Professional Background:\n${user_input}`}
 
 Requirements:
-1. Mix of behavioral and technical questions
-2. Questions appropriate for the role level
-3. Include follow-up prompts
+1. Generate 5 relevant interview questions
+2. Mix of behavioral and technical questions appropriate for the role
+3. Include follow-up prompts for deeper discussion
 4. Focus on real-world scenarios
+5. Progressive difficulty from basic to advanced
 
-Provide questions in JSON format:
-{
-  "questions": [
-    {
-      "question": "string",
-      "type": "behavioral|technical",
-      "follow_up": "string"
-    }
-  ]
-}`
+Format each question clearly with the question type and potential follow-up.`
     }
 
     const prompt = prompts[tool_type as keyof typeof prompts]
@@ -154,7 +142,9 @@ Provide questions in JSON format:
       throw new Error('Invalid tool type')
     }
 
-    // Call Groq API
+    console.log('Making request to Groq API with model: llama-3.1-70b-versatile')
+
+    // Call Groq API with corrected request format
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -171,15 +161,25 @@ Provide questions in JSON format:
         model: 'llama-3.1-70b-versatile',
         temperature: 0.7,
         max_tokens: 4000,
+        top_p: 1,
+        stream: false
       }),
     })
 
     if (!groqResponse.ok) {
-      throw new Error(`Groq API error: ${groqResponse.statusText}`)
+      const errorText = await groqResponse.text()
+      console.error(`Groq API error: ${groqResponse.status} ${groqResponse.statusText}`, errorText)
+      throw new Error(`Groq API error: ${groqResponse.status} ${groqResponse.statusText}`)
     }
 
     const groqData = await groqResponse.json()
-    const aiResponse = groqData.choices[0]?.message?.content
+    
+    if (!groqData.choices || !groqData.choices[0] || !groqData.choices[0].message) {
+      console.error('Invalid response structure from Groq:', groqData)
+      throw new Error('Invalid response from AI service')
+    }
+
+    const aiResponse = groqData.choices[0].message.content
 
     // Log usage
     await supabaseClient
@@ -190,6 +190,8 @@ Provide questions in JSON format:
         tokens_used: groqData.usage?.total_tokens || 0,
         success: true
       })
+
+    console.log('Successfully processed request for tool:', tool_type)
 
     return new Response(
       JSON.stringify({ 
@@ -203,7 +205,35 @@ Provide questions in JSON format:
     )
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in groq-api function:', error)
+    
+    // Try to log failed usage if we have user context
+    try {
+      const authHeader = req.headers.get('Authorization')
+      if (authHeader) {
+        const supabaseClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        )
+        const { data: { user } } = await supabaseClient.auth.getUser(
+          authHeader.replace('Bearer ', '')
+        )
+        if (user) {
+          const { tool_type } = await req.json().catch(() => ({}))
+          await supabaseClient
+            .from('usage_logs')
+            .insert({
+              user_id: user.id,
+              tool_type: tool_type || 'unknown',
+              tokens_used: 0,
+              success: false
+            })
+        }
+      }
+    } catch (logError) {
+      console.error('Failed to log usage:', logError)
+    }
+
     return new Response(
       JSON.stringify({ 
         success: false, 
